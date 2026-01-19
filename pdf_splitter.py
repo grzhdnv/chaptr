@@ -34,78 +34,91 @@ def split_pdf_by_toc(input_pdf_path, output_dir):
         doc.close()
         return
 
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
     total_pages = doc.page_count
     print(f"Total pages: {total_pages}")
     print(f"Found {len(toc)} sections in ToC.")
 
+    # Calculate ranges first
+    sections = []
     for i, entry in enumerate(toc):
         level, title, start_page = entry
-        
-        # PyMuPDF pages are 1-based in get_toc? 
-        # Documentation says: get_toc() returns [lvl, title, page, dest]
-        # page is 1-based.
-        # fitz.open() and manipulation uses 0-based indexing.
-        
-        # verified: get_toc returns 1-based page numbers.
-        # BUT we need to check if user needs to adjust this.
-        # Wait, let's verify with a quick script or documentation check if I can.
-        # Standard PyMuPDF get_toc returns 1-based page numbers usually.
-        # Actually, let's look at the docs if I could. Or just assume standard 1-based and convert to 0-based for slicing.
-        
-        # Let's assume start_page is 1-based from get_toc.
-        
         start_page_idx = start_page - 1
-
-        # Determine end page
+        
         if i < len(toc) - 1:
-            next_entry = toc[i+1]
-            next_start_page = next_entry[2]
-            end_page_idx = next_start_page - 2 # 1-based next start - 1 (previous page) - 1 (to 0-based) = -2
-            # Actually range is [start, end], but fitz uses to_page as inclusive? or we extract range?
-            # We will use insert_pdf which takes from_page and to_page (inclusive).
-            # So if next section starts at 10 (index 9), this section ends at 9 (index 8).
-            
-            # Wait, easier logic:
-            # start of this section (0-based): start_page - 1
-            # start of next section (0-based): toc[i+1][2] - 1
-            # so we want pages from (start_page - 1) up to (toc[i+1][2] - 2) inclusive.
-            
             end_page_idx = toc[i+1][2] - 2
         else:
             end_page_idx = total_pages - 1
-
+            
         if start_page_idx > end_page_idx:
-            # This can happen if multiple toc entries point to the same page or nesting weirdness
-            # We will just skip or grab the single page
-             # But if they point to the same page, start=end.
-             pass
-
-        # Valid range check
+            # Skip invalid ranges or empty sections
+            continue
+            
+        # Ensure bounds
         if start_page_idx < 0: start_page_idx = 0
         if end_page_idx >= total_pages: end_page_idx = total_pages - 1
         
-        if start_page_idx > end_page_idx:
-            print(f"Skipping empty section: {title}")
-            continue
+        sections.append({
+            "id": i + 1,
+            "title": title,
+            "start": start_page_idx,
+            "end": end_page_idx
+        })
 
-        print(f"Extracting: '{title}' (Pages {start_page_idx+1}-{end_page_idx+1})")
+    # Display sections to user
+    print("\nAvailable Sections:")
+    print(f"{'ID':<5} | {'Pages':<15} | {'Title'}")
+    print("-" * 50)
+    for section in sections:
+        page_range = f"{section['start']+1}-{section['end']+1}"
+        print(f"{section['id']:<5} | {page_range:<15} | {section['title']}")
+    print("-" * 50)
+    
+    # Prompt for exclusions
+    print("\nEnter the IDs of sections you want to EXCLUDE (comma-separated).")
+    print("Press Enter to keep all sections.")
+    
+    user_input = input("Exclude IDs: ").strip()
+    excluded_ids = set()
+    
+    if user_input:
+        try:
+            parts = user_input.split(',')
+            for part in parts:
+                if part.strip():
+                    excluded_ids.add(int(part.strip()))
+        except ValueError:
+            print("Invalid input! Please enter numbers separated by commas.")
+            doc.close()
+            return
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    print("\nProcessing...")
+    
+    count = 0
+    for section in sections:
+        if section["id"] in excluded_ids:
+            print(f"Skipping (Excluded): {section['title']}")
+            continue
+            
+        print(f"Extracting: '{section['title']}' (Pages {section['start']+1}-{section['end']+1})")
         
-        # Create new PDF
         new_doc = fitz.open()
-        new_doc.insert_pdf(doc, from_page=start_page_idx, to_page=end_page_idx)
+        new_doc.insert_pdf(doc, from_page=section['start'], to_page=section['end'])
         
-        safe_title = sanitize_filename(title)
-        output_filename = f"{i+1:03d}_{safe_title}.pdf"
+        safe_title = sanitize_filename(section['title'])
+        # Use simple counter for output filename order, or keep original ID?
+        # Let's keep original ID to avoid confusion
+        output_filename = f"{section['id']:03d}_{safe_title}.pdf"
         output_path = os.path.join(output_dir, output_filename)
         
         new_doc.save(output_path)
         new_doc.close()
+        count += 1
 
     doc.close()
-    print("Done!")
+    print(f"\nDone! Extracted {count} files.")
 
 def main():
     parser = argparse.ArgumentParser(description="Split PDF by Table of Contents")
