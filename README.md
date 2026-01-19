@@ -1,4 +1,4 @@
-# PDF Splitter based on Table of Contents
+# PDF Splitter (chaptr)
 
 This is a simple automated tool to split large PDF files into smaller PDF files based on their Table of Contents (ToC).
 
@@ -33,6 +33,7 @@ python pdf_splitter.py <input_pdf_path>
 ### Optional Arguments
 
 -   `-o` or `--output`: Specify the output directory (default is `output`).
+-   `--deep`: Split by all sections (recursive), not just top-level chapters.
 
 ### Example
 
