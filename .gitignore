@@ -10,3 +10,6 @@ __pycache__/
 # Project specific
 output/
 dummy_with_toc.pdf
+
+# macOS behavior
+.DS_Store
